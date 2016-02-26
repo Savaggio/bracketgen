@@ -1,0 +1,73 @@
+section
+  .layout
+    .sidebar
+      .toolbar
+        .toolbar__radio-group
+          .toolbar__heading Bracket Sizing
+          label
+            span Range
+            input(
+              type='radio'
+              ng-model='main.bracketSizing'
+              name='bracket_sizing'
+              ng-change='main.onSizeChange()'
+              value='range'
+              )
+          label
+            span From list
+            input(
+              type='radio'
+              ng-model='main.bracketSizing'
+              name='bracket_sizing'
+              ng-change='main.onSizeChange()'
+              value='list'
+              )
+      .toolbar(
+        ng-class='{"toolbar--disabled": main.bracketSizing != "range"}'
+        )
+        input#bracket-size(
+          type='range'
+          name='bracket_size'
+          min='4'
+          max='32'
+          ng-model='main.size'
+          ng-change='main.onSizeChange()'
+          ng-value='18'
+          )
+        span#bracket-size-val(ng-bind='main.size')
+
+      .toolbar(
+        ng-class='{"toolbar--disabled": main.bracketSizing != "list"}'
+        )
+        textarea#participants(
+          rows='32'
+          ng-model='main.seedslist'
+          ng-change='main.onSizeChange()'
+        )
+
+      label.toolbar
+        span(ng-bind='::"base size:"')
+        span(ng-bind='main.getBaseSize()')
+
+      label.toolbar
+        span(ng-bind='::"byes:"')
+        span(ng-bind='main.numByes()')
+
+      label.toolbar
+        span(ng-bind='::"rounds:"')
+        span(ng-bind='main.numRounds()')
+
+    .bracket
+      .bracket__round(ng-repeat='round in main.bracket track by $index')
+        .bracket__match(
+          ng-repeat='match in round track by $index'
+          data-matchnum='{{match.seq}}'
+          data-emptylevel='{{main.getEmptyLevel(main.bracket, match)}}'
+          )
+          .bracket__teamlist
+            .bracket__team(
+              ng-repeat='team in match.teams track by $index'
+              data-rank='{{team.rank}}'
+              )
+                span.bracket__team-name(ng-bind='team.name')
+
