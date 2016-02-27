@@ -22,46 +22,9 @@ export class MainController {
     let base = this.getBaseSize();
     let numMatches = this.getSize() - 1;
 
-    let rounds = this.getRoundsAndMatchesTree(numMatches);
+    this.bracket = this.getRoundsAndMatchesTree(numMatches);
 
-    // let rz = base; // Round seats depth (e.g. 1st:32 seats, 2nd:16, 3rd:8, etc.)
-    // let mn = 1;    // Match number
-    // for(let r=0; r<rounds.length; r++) {
-      // let rmz = rz/2; // Round match depth
-
-      // for(let i=1; i<=rmz; i++) {
-        // let match = {
-          // seq: mn,
-          // teams: [],
-          // round: r+1,
-          // bye: !this.hasOpponent(seeds, i, rz)
-        // };
-
-        // if(match.round === 1 && match.bye === false) {
-          // let seedIdx = seeds.indexOf(this.getSeedWithRank(seeds, i));
-          // match.teams.push(seeds.splice(seedIdx, 1)[0]);
-
-          // let opponentIdx = seeds.indexOf(this.getOpponentWithRank(seeds, i, rz));
-          // match.teams.push(seeds.splice(opponentIdx, 1)[0]);
-        // }
-        // else if (match.round > 1) {
-          // let seedIdx = seeds.indexOf(this.getSeedWithRank(seeds, i));
-          // match.teams.push(seeds.splice(seedIdx, 1)[0]);
-
-          // let opponentIdx = seeds.indexOf(this.getOpponentWithRank(seeds, i, rz));
-          // match.teams.push(seeds.splice(opponentIdx, 1)[0]);
-        // }
-
-        // if(match.teams.length > 0) {
-          // rounds[r].push(match);
-          // mn++;
-        // }
-      // }
-
-      // rz /= 2;
-    // }
-
-    this.bracket = rounds;
+    this.setTeamsForBracket(this.bracket);
 
     /*eslint-enable */
   }
