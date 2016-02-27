@@ -9,9 +9,9 @@ export class MainController {
     this.knownBrackets = [2, 4, 8, 16, 32, 64, 128, 256, 512];
     this.exampleTeams = _.shuffle(["New Jersey Devils", "New York Islanders", "New York Rangers", "Philadelphia Flyers", "Pittsburgh Penguins", "Boston Bruins", "Buffalo Sabres", "Montreal Canadiens", "Ottawa Senators", "Toronto Maple Leafs", "Carolina Hurricanes", "Florida Panthers", "Tampa Bay Lightning", "Washington Capitals", "Winnipeg Jets", "Chicago Blackhawks", "Columbus Blue Jackets", "Detroit Red Wings", "Nashville Predators", "St. Louis Blues", "Calgary Flames", "Colorado Avalanche", "Edmonton Oilers", "Minnesota Wild", "Vancouver Canucks", "Anaheim Ducks", "Dallas Stars", "Los Angeles Kings", "Phoenix Coyotes", "San Jose Sharks", "Montreal Wanderers", "Quebec Nordiques", "Hartford Whalers"]); // because a bracket needs some teams!
 
-    this.seedslist = this.seedslist || '';
+    this.seedslist = this.seedslist || this.exampleTeams.slice(0, 27).join('\n');
 
-    this.bracketSizing = 'range';
+    this.bracketSizing = 'list';
     this.size = 14;
 
     this.onSizeChange();
@@ -23,9 +23,6 @@ export class MainController {
     let numMatches = this.getSize() - 1;
 
     let rounds = this.getRoundsAndMatchesTree(numMatches);
-
-    let seeds = _.map(_.times(base), (n) => _.get(this.seeds, n));
-    seeds = _.map(seeds, (el, idx) => el && {name: el, rank: idx+1});
 
     // let rz = base; // Round seats depth (e.g. 1st:32 seats, 2nd:16, 3rd:8, etc.)
     // let mn = 1;    // Match number
@@ -86,19 +83,23 @@ export class MainController {
       // Counting backwards, so technically the first to be added in the round
       // is the one with the highest sequence values, so this means first in
       // terms of lowest value
-      let firstInThisRound = (matchSeq - matchDepth) + 1;
-      let firstInNextRound = firstInThisRound + matchDepth;
+      let firstInThisRound = Math.max(0, (matchSeq - matchDepth)) + 1;
+      let firstInNextRound = firstInThisRound + matchesInRound;
 
       _.times(matchesInRound, () => {
         let nextMatchOffset = Math.floor((matchSeq - firstInThisRound) / 2);
         let nextMatch = firstInNextRound + nextMatchOffset;
 
-        rounds[ri].unshift({
+        let match = {
           seq: matchSeq,
           next: nextMatch > numMatches ? null : nextMatch,
           round: ri+1,
           teams: []
-        });
+        };
+
+        match.emptyLevel = this.getEmptyLevel(rounds, match);
+
+        rounds[ri].unshift(match);
 
         matchSeq--;
       })
@@ -112,22 +113,104 @@ export class MainController {
   }
 
   /*eslint-disable */
-  firstMatchInLargestEmptyFinals(rounds, roundIdx, matchIdx) {
+  setTeamsForBracket(bracket) {
+    let seeds = this.getSeedsBaseList(this.seeds);
+    let matchups = [];
+    let ix = seeds.length;
 
+    while(_.some(seeds) && ix > 0) {
+      let matchup = this.getMiddlemostMatchup(seeds, false);
 
+      matchups.unshift(matchup);
+
+      let m1Idx = seeds.indexOf(matchup[0]);
+      let m2Idx = seeds.indexOf(matchup[1]);
+
+      _.each([m1Idx, m2Idx], (i) => {
+        seeds.splice(i, 1, undefined);
+      });
+
+      ix--;
+    }
+
+    this.$log.debug(matchups);
+
+    let lastSetMatch;
+    _.each(matchups, (mm) => {
+      let round = _.isUndefined(mm[1]) ? 1 : 0;
+
+      let startSeq = bracket[round][0].seq;
+      let matchSeq = this.firstMatchInLargestEmptyFinals(bracket, round, startSeq).seq;
+
+      lastSetMatch = this.setTeamsForMatch(bracket, matchSeq, mm);
+    });
+
+    this.bracketMap((match) => {
+      match.emptyLevel = this.getEmptyLevel(bracket, match);
+      return match;
+    }, bracket, true);
+  }
+
+  setTeamsForMatch(bracket, matchSeq, teams) {
+    if(!_.every([bracket, matchSeq, teams])) {
+      return;
+    }
+
+    for(let ri=0; ri<bracket.length; ri++) {
+      for(let mi=0; mi<bracket[ri].length; mi++) {
+        if(_.get(bracket[ri][mi], 'seq') == matchSeq) {
+          bracket[ri][mi].teams = teams;
+
+          this.bracketMap((match) => {
+            match.emptyLevel = this.getEmptyLevel(bracket, match);
+            return match;
+          }, bracket, true);
+
+          return bracket[ri][mi];
+        }
+      }
+    }
+  }
+
+  firstMatchInLargestEmptyFinals(bracket, roundIdx, startSeq = 1) {
+    let matches = bracket[roundIdx];
+
+    let firstMax = _.maxBy(matches, (m) => {
+      if(m.seq < startSeq) {
+        return -1;
+      }
+
+      return this.getEmptyLevel(bracket, m);
+    });
+
+    return firstMax;
   }
 
   getEmptyLevel(bracket, match) {
     let emptyLevel = 0;
-    let matches = [];
+    let matches = [match];
     let allEmpty = true;
     let parent;
 
-    while(allEmpty) {
-      parent = this.getLaterMatch(bracket, match, emptyLevel+1);
+    let i = 0;
+
+    while(allEmpty && i<bracket.length) {
+      parent = this.getLaterMatch(bracket, match, emptyLevel);
 
       try{
-        _.union(matches, this.getMatchesBefore(bracket, parent.seq));
+        let parents = [parent];
+
+        this.bracketEach((bMatch) => {
+          if(bMatch.round < match.round) {
+            return;
+          }
+
+          if(_(parents).map((m)=>m.seq).includes(bMatch.next)) {
+            parents.push(bMatch);
+          }
+        }, bracket, true);
+
+        matches = _.union(matches, parents);
         allEmpty = _.every(matches, (m) => _.isEmpty(m.teams));
       }
       catch (e) {
@@ -137,6 +220,8 @@ export class MainController {
       if(allEmpty) {
         emptyLevel++;
       }
+
+      i++;
     }
 
     return emptyLevel;
@@ -191,9 +276,41 @@ export class MainController {
     return list;
   }
 
+  getSeedsBaseList(seeds = this.seeds) {
+    let base = this.getBaseSize();
+    let baselist = _.map(_.times(base), (n) => _.get(seeds, n));
+
+    return _.map(baselist, (el, idx) => el && {name: el, rank: idx+1});
+  }
+
+  getMiddlemostMatchup(seeds = this.getSeedsBaseList(this.seeds), opponent = true) {
+    let base = this.getBaseSize();
+    let depth = 1;
+    let matchup;
+
+    for(let rank=base/2; rank>=0; rank--) {
+      matchup = [
+        this.getSeedWithRank(seeds, rank),
+        this.getSeedWithRank(seeds, rank + depth)
+      ];
+
+      if(opponent && _.every(matchup)) {
+        break;
+      }
+      else if (!opponent && !_.isUndefined(matchup[0])) {
+        break;
+      }
+
+      depth += 2;
+    }
+
+    this.$log.debug(matchup);
+    return matchup;
+  }
+
   hasOpponent(seeds, rank, depth) {
     let p1 = this.getSeedWithRank(seeds, rank);
-    let p2 = this.getSeedWithRank(seeds, (depth - (rank-1)));
+    let p2 = this.getSeedWithRank(seeds, rank + depth);
 
     return !_.isUndefined(p1) && !_.isUndefined(p2);
   }
@@ -203,7 +320,7 @@ export class MainController {
   }
 
   getOpponentWithRank(seeds, rank, depth) {
-    return this.getSeedWithRank(seeds, (depth - (rank-1)));
+    return this.getSeedWithRank(seeds, rank + depth);
   }
 
   onSizeChange() {
@@ -250,5 +367,41 @@ export class MainController {
     }
 
     return rounds;
+  }
+
+  bracketMap(fn, bracket = this.bracket, reverse = false) {
+    let rIdxs = _.range(bracket.length);
+    let mIdxs;
+
+    if(_.isFunction(fn)) {
+      rIdxs = reverse ? rIdxs.reverse() : rIdxs;
+
+      _.each(rIdxs, (ri) => {
+        mIdxs = _.range(bracket[ri].length);
+        mIdxs = reverse ? mIdxs.reverse() : mIdxs;
+
+        _.each(mIdxs, (mi) => {
+          bracket[ri][mi] = fn(bracket[ri][mi]);
+        });
+      });
+    }
+  }
+
+  bracketEach(fn, bracket = this.bracket, reverse = false) {
+    let rIdxs = _.range(bracket.length);
+    let mIdxs;
+
+    if(_.isFunction(fn)) {
+      rIdxs = reverse ? rIdxs.reverse() : rIdxs;
+
+      _.each(rIdxs, (ri) => {
+        mIdxs = _.range(bracket[ri].length);
+        mIdxs = reverse ? mIdxs.reverse() : mIdxs;
+
+        _.each(mIdxs, (mi) => {
+          fn(bracket[ri][mi]);
+        });
+      });
+    }
   }
 }

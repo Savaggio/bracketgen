@@ -62,7 +62,7 @@ section
         .bracket__match(
           ng-repeat='match in round track by $index'
           data-matchnum='{{match.seq}}'
-          data-emptylevel='{{main.getEmptyLevel(main.bracket, match)}}'
+          data-emptylevel='{{match.emptyLevel}}'
           )
           .bracket__teamlist
             .bracket__team(
@@ -70,4 +70,3 @@ section
               data-rank='{{team.rank}}'
               )
                 span.bracket__team-name(ng-bind='team.name')
-
