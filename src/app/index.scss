@@ -80,6 +80,11 @@ body,
   color: green;
 }
 
+.bracket__debug {
+  color: yellow;
+  order: 5;
+}
+
 .bracket__teamlist {
   display: flex;
   flex-direction: column;

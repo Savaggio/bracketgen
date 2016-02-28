@@ -7,31 +7,21 @@ export class MainController {
     this.$log = $log;
 
     this.knownBrackets = [2, 4, 8, 16, 32, 64, 128, 256, 512];
-    this.exampleTeams = _.shuffle(["New Jersey Devils", "New York Islanders", "New York Rangers", "Philadelphia Flyers", "Pittsburgh Penguins", "Boston Bruins", "Buffalo Sabres", "Montreal Canadiens", "Ottawa Senators", "Toronto Maple Leafs", "Carolina Hurricanes", "Florida Panthers", "Tampa Bay Lightning", "Washington Capitals", "Winnipeg Jets", "Chicago Blackhawks", "Columbus Blue Jackets", "Detroit Red Wings", "Nashville Predators", "St. Louis Blues", "Calgary Flames", "Colorado Avalanche", "Edmonton Oilers", "Minnesota Wild", "Vancouver Canucks", "Anaheim Ducks", "Dallas Stars", "Los Angeles Kings", "Phoenix Coyotes", "San Jose Sharks", "Montreal Wanderers", "Quebec Nordiques", "Hartford Whalers"]); // because a bracket needs some teams!
+    this.exampleTeams = ["New Jersey Devils", "New York Islanders", "New York Rangers", "Philadelphia Flyers", "Pittsburgh Penguins", "Boston Bruins", "Buffalo Sabres", "Montreal Canadiens", "Ottawa Senators", "Toronto Maple Leafs", "Carolina Hurricanes", "Florida Panthers", "Tampa Bay Lightning", "Washington Capitals", "Winnipeg Jets", "Chicago Blackhawks", "Columbus Blue Jackets", "Detroit Red Wings", "Nashville Predators", "St. Louis Blues", "Calgary Flames", "Colorado Avalanche", "Edmonton Oilers", "Minnesota Wild", "Vancouver Canucks", "Anaheim Ducks", "Dallas Stars", "Los Angeles Kings", "Phoenix Coyotes", "San Jose Sharks", "Montreal Wanderers", "Quebec Nordiques", "Hartford Whalers"]; // because a bracket needs some teams!
 
     this.seedslist = this.seedslist || this.exampleTeams.slice(0, 27).join('\n');
 
     this.bracketSizing = 'list';
-    this.size = 14;
 
     this.onSizeChange();
   }
 
   setBracket() {
-    /*eslint-disable */
-    let base = this.getBaseSize();
-    let numMatches = this.getSize() - 1;
-
-    this.bracket = this.getRoundsAndMatchesTree(numMatches);
-
+    this.bracket = this.getRoundsAndMatchesTree(this.getBaseSize() - 1);
     this.setTeamsForBracket(this.bracket);
-
-    /*eslint-enable */
   }
 
-  getRoundsAndMatchesTree(numMatches) {
-    numMatches = _.isUndefined(numMatches) ? this.getSize() - 1 : numMatches;
-
+  getRoundsAndMatchesTree(numMatches = (this.getSize() - 1)) {
     let matchDepth = 1; // (i.e. # of matches in the current round)
     let matchSeq = numMatches;
     let matchesAdded = 0;
@@ -50,12 +40,14 @@ export class MainController {
       let firstInNextRound = firstInThisRound + matchesInRound;
 
       _.times(matchesInRound, () => {
-        let nextMatchOffset = Math.floor((matchSeq - firstInThisRound) / 2);
-        let nextMatch = firstInNextRound + nextMatchOffset;
+        let nextOffset = (matchSeq - firstInThisRound) / 2;
+        let nextMatch = Math.floor(firstInNextRound + nextOffset);
+        let nextMatchSeat = Math.round((firstInNextRound + nextOffset) - nextMatch);
 
         let match = {
           seq: matchSeq,
           next: nextMatch > numMatches ? null : nextMatch,
+          nextSeat: nextMatchSeat,
           round: ri+1,
           teams: []
         };
@@ -75,8 +67,7 @@ export class MainController {
     return rounds;
   }
 
-  /*eslint-disable */
-  setTeamsForBracket(bracket) {
+  getMatchups() {
     let seeds = this.getSeedsBaseList(this.seeds);
     let matchups = [];
     let ix = seeds.length;
@@ -84,7 +75,7 @@ export class MainController {
     while(_.some(seeds) && ix > 0) {
       let matchup = this.getMiddlemostMatchup(seeds, false);
 
-      matchups.unshift(matchup);
+      matchups.push(matchup);
 
       let m1Idx = seeds.indexOf(matchup[0]);
       let m2Idx = seeds.indexOf(matchup[1]);
@@ -96,30 +87,56 @@ export class MainController {
       ix--;
     }
 
+    matchups = _.sortBy(matchups, (mu) => mu[0].rank);
+
     this.$log.debug(matchups);
 
-    let lastSetMatch;
-    _.each(matchups, (mm) => {
-      let round = _.isUndefined(mm[1]) ? 1 : 0;
+    return matchups;
+  }
 
-      let startSeq = bracket[round][0].seq;
-      let matchSeq = this.firstMatchInLargestEmptyFinals(bracket, round, startSeq).seq;
+  /*eslint-disable */
+  setSeqForMatches(bracket) {
+    seqCount = _.maxBy(bracket, (m) => m.seq).seq;
 
-      lastSetMatch = this.setTeamsForMatch(bracket, matchSeq, mm);
-    });
+    oldNexts = [];
 
     this.bracketMap((match) => {
-      match.emptyLevel = this.getEmptyLevel(bracket, match);
+      let oldNext = _.find(oldNexts, (om) => om.oldSeq === match.next);
+
+      if(oldLeadup) {
+        match.next = oldNext.newSeq;
+      }
+
+      if(match.round > 1) {
+        oldNexts.push({
+          oldSeq: match.seq,
+          newSeq: seqCount
+        });
+      }
+
+      match.seq = seqCount;
+
       return match;
     }, bracket, true);
   }
 
-  setTeamsForMatch(bracket, matchSeq, teams) {
-    if(!_.every([bracket, matchSeq, teams])) {
+  /*eslint-disable */
+  setTeamsForBracket(bracket, matchups = this.getMatchups()) {
+    _.each(matchups, (teams) => {
+      this.setTeamsForMatch(bracket, teams);
+    });
+  }
+
+  setTeamsForMatch(bracket, teams, roundIdx = 0) {
+    if(!_.every([bracket, teams])) {
       return;
     }
 
-    for(let ri=0; ri<bracket.length; ri++) {
+    let bye = _.isUndefined(teams[1]);
+    let firstRoundIdx = bye ? roundIdx + 1 : roundIdx;
+    let matchSeq = this.firstMatchInLargestEmptyFinals(bracket, firstRoundIdx).seq;
+
+    for(let ri=firstRoundIdx; ri>=0; ri--) {
       for(let mi=0; mi<bracket[ri].length; mi++) {
         if(_.get(bracket[ri][mi], 'seq') == matchSeq) {
           bracket[ri][mi].teams = teams;
@@ -129,51 +146,123 @@ export class MainController {
             return match;
           }, bracket, true);
 
-          return bracket[ri][mi];
+          if(!bye) {
+            return;
+          }
+        }
+
+        if(_.get(bracket[ri][mi], 'next') == matchSeq) {
+          bracket[ri][mi].bye = true;
+
+          return;
         }
       }
     }
   }
 
-  firstMatchInLargestEmptyFinals(bracket, roundIdx, startSeq = 1) {
+  firstMatchInLargestEmptyFinals(bracket, roundIdx, forBye = false) {
     let matches = bracket[roundIdx];
 
-    let firstMax = _.maxBy(matches, (m) => {
-      if(m.seq < startSeq) {
+    if(forBye) {
+      let byeGroups = this.getByeMatchGroups(bracket, roundIdx);
+      matches = _.filter(matches, (m) => !_.includes(byeGroups, m.next));
+    }
+
+    let firstSeq = matches[0].seq;
+    let preferredStart = this.lastSetMatchInRound(bracket, roundIdx).seq;
+
+    let largestAfterStartSeq = _.maxBy(matches, (m) => {
+      return (m.seq < preferredStart || m.bye) ? -1 : this.getEmptyLevel(bracket, m);
+    });
+
+    let largestOverall = _.maxBy(matches, (m) => {
+      return (m.seq < firstSeq || m.bye) ? -1 : this.getEmptyLevel(bracket, m);
+    });
+
+    let firstMax;
+
+    if(largestAfterStartSeq.emptyLevel >= largestOverall.emptyLevel) {
+      firstMax = largestAfterStartSeq;
+    }
+    else {
+      firstMax = largestOverall;
+    }
+
+    return firstMax;
+  }
+
+
+  lastSetMatchInRound(bracket, roundIdx) {
+    let matches = bracket[roundIdx];
+
+    let lastSet = _.maxBy(matches, (m) => {
+      if(_.isEmpty(m.teams)) {
         return -1;
       }
 
-      return this.getEmptyLevel(bracket, m);
+      return m.teams[0].rank;
     });
 
-    return firstMax;
+    return lastSet;
+  }
+
+  getByeMatchGroups(bracket, roundIdx) {
+    let matches = bracket[roundIdx];
+
+    return _(matches)
+      .groupBy((m) => m.next)
+      .filter((group) => _.some(group, (m) => m.bye == true))
+      .flatten()
+      .map((m) => m.next)
+      .uniq()
+      .value()
   }
 
   getEmptyLevel(bracket, match) {
     let emptyLevel = 0;
     let matches = [match];
-    let allEmpty = true;
-    let parent;
+
+    let allEmpty = _.isEmpty(match.teams) && !match.bye;
+    if(allEmpty == false && _.isEmpty(match.teams[1])) {
+      emptyLevel = !!match.bye ? 0 : emptyLevel = 0.5;
+    }
 
     let i = 0;
-
+    let parent;
     while(allEmpty && i<bracket.length) {
       parent = this.getLaterMatch(bracket, match, emptyLevel);
 
-      try{
-        let parents = [parent];
+      // Handle first parent traversal: involves match, parent and sibling
+      // match (other match in this round going to the same next match)
+      if(parent && parent.seq === match.next && !_.isEmpty(parent.teams)) {
+        // Mark the parent as empty if the corresponding seat for this match
+        // is empty.
+        if(match.nextSeat === 1 && _.isEmpty(parent.teams[1])) {
+          emptyLevel++;
+          i++;
+          continue;
+        }
+        else {
+          allEmpty = false;
+          i++;
+          continue;
+        }
+      }
 
+      let parentsAndSiblings = [parent];
+
+      try{
         this.bracketEach((bMatch) => {
           if(bMatch.round < match.round) {
             return;
           }
 
-          if(_(parents).map((m)=>m.seq).includes(bMatch.next)) {
-            parents.push(bMatch);
+          if(_(parentsAndSiblings).map((m) => m.seq).includes(bMatch.next)) {
+            parentsAndSiblings.push(bMatch);
           }
         }, bracket, true);
 
-        matches = _.union(matches, parents);
+        matches = _.union(matches, parentsAndSiblings);
         allEmpty = _.every(matches, (m) => _.isEmpty(m.teams));
       }
       catch (e) {
