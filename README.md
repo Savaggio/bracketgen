@@ -16,3 +16,8 @@ The generator can easily be used for a single-elimination tournament bracket, an
 * Once the above has been done _once_, Just use `gulp` for workflow tasks:
   * run `gulp serve` to run the development server which compiles Js, Sass and the Jade templates on the fly, using BrowserSync to reload _all_ of your browsers on the fly
   * run `gulp build` to build all the assets in `dist`, optimized for production environments
+
+# TODO
+* Consider matchup pairings against byes
+* Renumber match sequences to not count those not played because of byes
+* Visual representation of next match (current markup provides a good starting point)
